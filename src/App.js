@@ -7,7 +7,7 @@ import {
   Message,
   Button
 } from 'semantic-ui-react'
-/*import {
+import {
   Stitch,
   UserPasswordCredential,
   RemoteMongoClient
@@ -15,7 +15,7 @@ import {
 import {
   AwsServiceClient,
   AwsRequest
-} from 'mongodb-stitch-browser-services-aws'*/
+} from 'mongodb-stitch-browser-services-aws'
 import BSON from 'bson'
 
 import Login from './components/Login'
@@ -50,9 +50,7 @@ const convertImageToBSONBinaryObject = file => {
 class App extends Component {
   constructor(props) {
     super(props)
-    // Exercise 2
-    // TODO: Paste your Stitch App ID from the Stitch Admin Console here.
-    this.appId = ''
+    this.appId = 'picstream-xdivd'
 
     this.state = {
       isAuthed: false,
@@ -62,38 +60,20 @@ class App extends Component {
   }
 
   componentDidMount = async () => {
-    // Exercise 2
-    // TODO: Initialize the Stitch App Client
+    this.client = Stitch.initializeAppClient(this.appId)
 
     // Exercise 4
     // TODO: Initialize the RemoteMongoClient
 
-    // Exercise 3
-    // TODO: Initialize the AWS Service Client
+    this.aws = this.client.getServiceClient(AwsServiceClient.factory, 'aws')
 
-    // Exercise 2
-    // TODO: Change the following line to check if
-    // client is already logged in.
-    const isAuthed = false
+    const isAuthed = this.client.auth.isLoggedIn
+
     if (isAuthed) {
       const email = this.client.auth.user.profile.email
       const entries = await this.getEntries()
       this.setState({ isAuthed, email, entries })
     }
-
-    // MOCK START
-    // TODO: Remove this as part of Exercise 2
-    this.client = {
-      auth: {
-        user: {
-          id: '12345',
-          profile: {
-            email: ''
-          }
-        }
-      }
-    }
-    // MOCK END
   }
 
   login = async (email, password) => {
@@ -102,8 +82,9 @@ class App extends Component {
     if (isAuthed) {
       return
     }
-    // Exercise 2
-    // TODO: Use the client to log in
+    
+    const credential = new UserPasswordCredential(email, password)
+    const user = await this.client.auth.loginWithCredential(credential)
 
     const entries = await this.getEntries()
     this.setState({
@@ -114,8 +95,7 @@ class App extends Component {
   }
 
   logout = async () => {
-    // Exercise 2
-    // TODO: Use the client to log out
+    this.client.auth.logout()
 
     this.setState({ isAuthed: false, email: '', entries: [] })
   }
@@ -145,19 +125,29 @@ class App extends Component {
   }
 
   saveFile = async file => {
-    const key = `${this.client.auth.user.id}-${file.name}`
-    // Exercise 3
-    // TODO: Replace the value of bucket with the name of your S3 bucket
-    const bucket = 'your-bucket-name'
-    const url = `https://${bucket}.s3.amazonaws.com/${encodeURIComponent(key)}`
+    const key = '${this.client.auth.user.id}-${file.name}'
+    const bucket = 'picstream-imb'
+    const url = 'https://${bucket}.s3.amazonaws.com/${encodeURIComponent(key)}'
 
-    // The following BSON Binary Object can be used a the body of the request.
     const bsonFile = await convertImageToBSONBinaryObject(file)
 
-    // Exercise 3
-    // TODO: Replace with a function to execute an AWS S3 Request
-    // You will need to setup the args and build the request.
-    const s3Result = { ETag: '12345' }
+    // AWS S3 Request
+    const args = {
+      ACL: 'public-read',
+      Bucket: bucket,
+      ContentType: file.type,
+      Key: key,
+      Body: bsonFile
+    }
+
+    const request = new AwsRequest.Builder()
+      .withService('s3')
+      .withAction('PutObject')
+      .withRegion('us-east-2')
+      .withArgs(args)
+      .build()
+
+    const s3Result = await this.aws.execute(request)
 
     return {
       url,
